@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MySpamBot // Web Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="bg-grid"></div>
+<div class="bg-glow"></div>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="dot"></span>
+    <span class="brand-text">MySpamBot</span>
+    <span class="brand-tag">v2.0</span>
+  </div>
+  <div class="topbar-right">
+    <span class="pill" id="connStatus">● ONLINE</span>
+    <span class="clock" id="clock">--:--:--</span>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section class="hero">
+    <h1>Web Console <span class="accent">// Spam Engine</span></h1>
+    <p class="hero-sub">Author: Ricky Khairul Faza &nbsp;•&nbsp; Mode: <b>SOFT / Anti-Ban</b> &nbsp;•&nbsp; Stack: Flask + Render</p>
+  </section>
+
+  <section class="stats">
+    <div class="stat">
+      <div class="stat-label">Total Hits</div>
+      <div class="stat-value" id="statHits">0</div>
+      <div class="stat-bar"><div class="stat-bar-fill" id="statBar"></div></div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Status</div>
+      <div class="stat-value small" id="statStatus">IDLE</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Target</div>
+      <div class="stat-value small mono" id="statTarget">—</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Uptime</div>
+      <div class="stat-value small mono" id="statUptime">0s</div>
+    </div>
+  </section>
+
+  <section class="grid-main">
+
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">◢ CONFIG</span>
+        <span class="panel-sub">atur parameter spam</span>
+      </div>
+
+      <div class="field">
+        <label>Nomor Target</label>
+        <input id="nomor" type="text" placeholder="08xxxxxxxxxx" autocomplete="off" inputmode="numeric">
+        <small class="hint">10-15 digit angka, tanpa +62</small>
+      </div>
+
+      <div class="field-grid">
+        <div class="field">
+          <label>Cycles</label>
+          <input id="cycles" type="number" value="5" min="1" max="30">
+          <small class="hint">1-30 siklus</small>
+        </div>
+        <div class="field">
+          <label>Delay / siklus (s)</label>
+          <input id="delay" type="number" value="180" min="60" max="900">
+          <small class="hint">60-900 detik</small>
+        </div>
+        <div class="field">
+          <label>Max / siklus</label>
+          <input id="max_per_cycle" type="number" value="5" min="1" max="15">
+          <small class="hint">1-15 endpoint</small>
+        </div>
+        <div class="field">
+          <label>Gap / endpoint (s)</label>
+          <input id="gap" type="number" value="10" min="3" max="60">
+          <small class="hint">3-60 detik</small>
+        </div>
+      </div>
+
+      <div class="preview" id="preview">
+        <span>Estimasi: <b id="pvHits">25</b> hits • ~<b id="pvDur">30</b> menit</span>
+      </div>
+
+      <div class="btn-row">
+        <button id="btnStart" class="btn btn-primary" onclick="startJob()">
+          <span class="btn-ico">▶</span> GAS
+        </button>
+        <button id="btnStop" class="btn btn-danger" onclick="stopJob()" disabled>
+          <span class="btn-ico">■</span> STOP
+        </button>
+      </div>
+    </div>
+
+    <div class="panel panel-log">
+      <div class="panel-head">
+        <span class="panel-title">◢ LIVE LOG</span>
+        <div class="log-actions">
+          <button class="mini" onclick="clearLog()">CLEAR</button>
+          <button class="mini" onclick="toggleAutoScroll()" id="autoBtn">AUTO ▼</button>
+        </div>
+      </div>
+      <div id="log" class="log">
+        <div class="log-line log-info">[SYS] Menunggu perintah...</div>
+      </div>
+    </div>
+
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <span class="panel-title">◢ JOB HISTORY</span>
+      <span class="panel-sub">max 20 job terakhir</span>
+    </div>
+    <div id="history" class="history">
+      <div class="history-empty">Belum ada job.</div>
+    </div>
+  </section>
+
+  <footer class="foot">
+    ⚠ Gunakan dengan bijak. Segala risiko ditanggung pengguna.
+  </footer>
+
+</main>
+
+<script>
+let jobId = null, poll = null, autoScroll = true, totalPlanned = 0;
+
+setInterval(() => {
+  const d = new Date();
+  document.getElementById('clock').textContent = d.toTimeString().split(' ')[0];
+}, 1000);
+
+function updatePreview() {
+  const cycles = +document.getElementById('cycles').value || 1;
+  const delay = +document.getElementById('delay').value || 60;
+  const mpc = +document.getElementById('max_per_cycle').value || 1;
+  const gap = +document.getElementById('gap').value || 0;
+  const hits = cycles * mpc;
+  const dur = Math.ceil((cycles * (mpc * gap + delay)) / 60);
+  document.getElementById('pvHits').textContent = hits;
+  document.getElementById('pvDur').textContent = dur;
+}
+['cycles','delay','max_per_cycle','gap'].forEach(id => {
+  document.getElementById(id).addEventListener('input', updatePreview);
+});
+updatePreview();
+
+const logEl = document.getElementById('log');
+
+function addLog(text, cls = 'info') {
+  const div = document.createElement('div');
+  div.className = 'log-line log-' + cls;
+  div.textContent = text;
+  logEl.appendChild(div);
+  while (logEl.children.length > 400) logEl.removeChild(logEl.firstChild);
+  if (autoScroll) logEl.scrollTop = logEl.scrollHeight;
+}
+
+function clearLog() {
+  logEl.innerHTML = '';
+  addLog('[SYS] Log dibersihkan', 'info');
+}
+
+function toggleAutoScroll() {
+  autoScroll = !autoScroll;
+  document.getElementById('autoBtn').textContent = autoScroll ? 'AUTO ▼' : 'MANUAL';
+}
+
+function classify(line) {
+  if (line.startsWith('[OK]'))   return 'ok';
+  if (line.startsWith('[ERR]'))  return 'err';
+  if (line.startsWith('[STOP]') || line.startsWith('[DONE]')) return 'done';
+  if (line.startsWith('[WAIT]')) return 'wait';
+  if (line.startsWith('[CYCLE]'))return 'cycle';
+  return 'info';
+}
+
+async function startJob() {
+  const nomor = document.getElementById('nomor').value.trim();
+  const cycles = parseInt(document.getElementById('cycles').value) || 5;
+  const delay = parseInt(document.getElementById('delay').value) || 180;
+  const max_per_cycle = parseInt(document.getElementById('max_per_cycle').value) || 5;
+  const gap = parseInt(document.getElementById('gap').value) || 10;
+
+  if (!nomor) return alert('Isi nomor dulu');
+  if (!/^\d{10,15}$/.test(nomor)) return alert('Nomor harus 10-15 digit angka');
+
+  const total = cycles * max_per_cycle;
+  const est = Math.ceil((cycles * (max_per_cycle * gap + delay)) / 60);
+  if (!confirm(`Total hits: ${total}\nEstimasi: ~${est} menit\n\nLanjut?`)) return;
+
+  const btn = document.getElementById('btnStart');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="btn-ico spin">◌</span> STARTING...';
+
+  addLog(`[SYS] Memulai job ke ${nomor} (${total} hits)`, 'info');
+
+  try {
+    const r = await fetch('/api/start', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({nomor, cycles, delay, max_per_cycle, gap})
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'gagal');
+
+    jobId = d.job_id;
+    totalPlanned = d.total_planned || total;
+    document.getElementById('statTarget').textContent = nomor;
+    document.getElementById('statStatus').textContent = 'RUNNING';
+    document.getElementById('btnStop').disabled = false;
+    btn.innerHTML = '<span class="btn-ico">▶</span> GAS';
+    poll = setInterval(checkStatus, 1500);
+  } catch (e) {
+    addLog('[ERR] ' + e.message, 'err');
+    alert('Error: ' + e.message);
+    btn.disabled = false;
+    btn.innerHTML = '<span class="btn-ico">▶</span> GAS';
+  }
+}
+
+async function checkStatus() {
+  if (!jobId) return;
+  try {
+    const r = await fetch('/api/status/' + jobId);
+    const d = await r.json();
+    if (!r.ok) return;
+
+    document.getElementById('statStatus').textContent = d.status.toUpperCase();
+    document.getElementById('statHits').textContent = d.count;
+    document.getElementById('statUptime').textContent = d.uptime + 's';
+    const pct = totalPlanned ? Math.min(100, (d.count / totalPlanned) * 100) : 0;
+    document.getElementById('statBar').style.width = pct + '%';
+
+    const lastCount = logEl.dataset.count ? +logEl.dataset.count : 0;
+    if (d.log.length < lastCount) logEl.innerHTML = '';
+    d.log.slice(lastCount).forEach(l => addLog(l, classify(l)));
+    logEl.dataset.count = d.log.length;
+
+    if (d.status === 'done' || d.status === 'stopped') {
+      clearInterval(poll);
+      document.getElementById('btnStart').disabled = false;
+      document.getElementById('btnStop').disabled = true;
+      addLog(`[SYS] Job selesai: ${d.status}`, 'done');
+      loadHistory();
+    }
+  } catch (e) { /* silent */ }
+}
+
+async function stopJob() {
+  if (!jobId) return;
+  document.getElementById('btnStop').disabled = true;
+  addLog('[SYS] Mengirim perintah STOP...', 'wait');
+  try {
+    await fetch('/api/stop/' + jobId, {method:'POST'});
+  } catch (e) { addLog('[ERR] stop gagal', 'err'); }
+}
+
+async function loadHistory() {
+  try {
+    const r = await fetch('/api/jobs');
+    const list = await r.json();
+    const el = document.getElementById('history');
+    if (!list.length) {
+      el.innerHTML = '<div class="history-empty">Belum ada job.</div>';
+      return;
+    }
+    el.innerHTML = list.reverse().map(j => `
+      <div class="hist-row">
+        <span class="hist-target mono">${j.nomor}</span>
+        <span class="hist-status hist-${j.status}">${j.status.toUpperCase()}</span>
+        <span class="hist-count">${j.count} hits</span>
+      </div>
+    `).join('');
+  } catch (e) { /* silent */ }
+}
+loadHistory();
+setInterval(loadHistory, 8000);
+</script>
+</body>
+</html>
